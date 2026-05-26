@@ -1,0 +1,280 @@
+/* Chain Reaction — layout + neon UI */
+:root {
+  --bg: #0a0a14;
+  --panel: rgba(255, 255, 255, 0.05);
+  --accent: #21e6ff;
+  --text: #eaf6ff;
+  --muted: #7c8db0;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: radial-gradient(circle at 50% 0%, #131326 0%, #0a0a14 60%);
+  color: var(--text);
+  font-family: "Trebuchet MS", system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+#app {
+  /* --board is sized by whichever is smallest: width, a hard cap, or the
+     height left over after the topbar + controls. That last term is what
+     stops vertical clipping on short phones. */
+  height: 100vh;
+  --reserved: 164px;
+  --board: min(92vw, 520px, calc(100vh - var(--reserved)));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 12px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+@supports (height: 100dvh) {
+  /* dvh tracks the shrinking/growing mobile toolbars */
+  #app {
+    height: 100dvh;
+    --board: min(92vw, 520px, calc(100dvh - var(--reserved)));
+  }
+}
+
+.topbar {
+  width: var(--board);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.title {
+  font-size: clamp(18px, 4.5vw, 26px);
+  font-weight: 800;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, #21e6ff, #ff2ea8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 24px rgba(33, 230, 255, 0.25);
+}
+
+.scores { display: flex; gap: 10px; }
+
+.stat {
+  background: var(--panel);
+  border: 1px solid rgba(120, 160, 255, 0.15);
+  border-radius: 12px;
+  padding: 6px 14px;
+  text-align: center;
+  min-width: 78px;
+}
+.stat .label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.stat .value {
+  font-size: clamp(16px, 4vw, 22px);
+  font-weight: 800;
+  display: inline-block;
+}
+#score.bump {
+  animation: scoreBump 0.32s ease-out;
+}
+@keyframes scoreBump {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.45); color: #21e6ff; text-shadow: 0 0 18px rgba(33, 230, 255, 0.8); }
+  100% { transform: scale(1); }
+}
+
+#board {
+  width: var(--board);
+  height: var(--board);
+  border-radius: 18px;
+  background: rgba(10, 12, 24, 0.6);
+  box-shadow: 0 0 60px rgba(33, 230, 255, 0.08), inset 0 0 40px rgba(0, 0, 0, 0.6);
+  display: block;
+}
+
+.controls {
+  width: var(--board);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+button.btn {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid rgba(120, 160, 255, 0.2);
+  color: var(--text);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 1px;
+  padding: 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.08s ease, border-color 0.2s ease, background 0.2s ease;
+}
+button.btn:hover { border-color: var(--accent); background: rgba(33, 230, 255, 0.08); }
+button.btn:active { transform: scale(0.96); }
+button.btn:disabled { opacity: 0.35; cursor: default; }
+
+.icon-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  padding: 12px 0;
+  font-size: 16px;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+
+/* Game over modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 6, 14, 0.78);
+  backdrop-filter: blur(6px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+.modal-backdrop.show { display: flex; }
+
+.modal {
+  width: min(86vw, 380px);
+  background: linear-gradient(180deg, #15172b, #0c0d18);
+  border: 1px solid rgba(120, 160, 255, 0.25);
+  border-radius: 20px;
+  padding: 28px 24px;
+  text-align: center;
+  box-shadow: 0 0 80px rgba(255, 46, 168, 0.18);
+}
+.modal h2 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, #21e6ff, #ff2ea8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.modal .row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 4px;
+  border-bottom: 1px solid rgba(120, 160, 255, 0.12);
+  font-size: 15px;
+}
+.modal .row .k { color: var(--muted); }
+.modal .row .v { font-weight: 800; }
+.modal .actions { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+.modal button.primary {
+  background: linear-gradient(90deg, #21e6ff, #2a7bff);
+  color: #04121f;
+  border: none;
+}
+.modal button.primary:hover { filter: brightness(1.1); }
+
+/* Easy-mode toggle when active */
+button.btn.active {
+  border-color: #27e07a;
+  background: rgba(39, 224, 122, 0.14);
+  color: #8df7bb;
+}
+
+/* Tutorial */
+.modal.tutorial { min-height: 320px; display: flex; flex-direction: column; }
+.tut-canvas {
+  width: 100%;
+  height: 104px;
+  display: block;
+  margin-bottom: 8px;
+}
+.tut-body {
+  flex: 1;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #c9d8f5;
+  margin: 6px 0 14px;
+  min-height: 72px;
+}
+.tut-dots { display: flex; gap: 8px; justify-content: center; margin-bottom: 6px; }
+.tut-dots .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(120, 160, 255, 0.25);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.tut-dots .dot.on { background: var(--accent); transform: scale(1.3); box-shadow: 0 0 10px var(--accent); }
+
+/* Difficulty toggle inside the tutorial (settings) */
+.tut-setting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.tut-setting-label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+button.easy-toggle {
+  flex: 0 0 auto;
+  min-width: 96px;
+  padding: 8px 18px;
+  font-size: 13px;
+}
+
+/* Dev panel (only injected when the URL has ?dev) */
+.dev-panel {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 50;
+  opacity: 0.88;
+}
+.dev-panel button {
+  font: 600 11px/1 "Trebuchet MS", system-ui, sans-serif;
+  background: #15172b;
+  color: #9fb3e0;
+  border: 1px solid rgba(120, 160, 255, 0.3);
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+  text-align: left;
+}
+.dev-panel button:hover { border-color: #21e6ff; color: #fff; }
+
+/* Narrow mobile: tighten the main control row */
+@media (max-width: 430px) {
+  .controls { gap: 6px; }
+  button.btn { font-size: 12px; padding: 11px 8px; letter-spacing: 0.5px; }
+  .icon-btn { width: 38px; padding: 11px 0; }
+  #app { gap: 10px; --reserved: 150px; }
+}
+
+/* Short viewports: shrink gaps so the board never clips */
+@media (max-height: 700px) {
+  #app { gap: 8px; --reserved: 138px; }
+  .stat { padding: 5px 12px; }
+}
