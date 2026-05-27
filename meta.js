@@ -8,9 +8,24 @@
   const HS_KEY = "chainreaction.highscores";
   const HS_MAX = 10;
   const HighScores = {
+    // Tolerant load: drops anything malformed and coerces fields, so an old
+    // or corrupted entry can never render "undefined" in the table.
     load: function () {
-      try { return JSON.parse(localStorage.getItem(HS_KEY)) || []; }
-      catch (e) { return []; }
+      var list;
+      try { list = JSON.parse(localStorage.getItem(HS_KEY)); } catch (e) { return []; }
+      if (!Array.isArray(list)) return [];
+      return list
+        .filter(function (e) { return e && typeof e.score === "number" && isFinite(e.score); })
+        .map(function (e) {
+          return {
+            score: Math.max(0, Math.round(e.score)),
+            maxTile: Math.max(0, Math.round(e.maxTile || 0)),
+            chain: Math.max(0, Math.round(e.chain || 0)),
+            date: e.date || 0,
+          };
+        })
+        .sort(function (a, b) { return b.score - a.score; })
+        .slice(0, HS_MAX);
     },
     save: function (list) {
       try { localStorage.setItem(HS_KEY, JSON.stringify(list)); } catch (e) { /* ignore */ }
@@ -31,8 +46,14 @@
   const LIFE_KEY = "chainreaction.lifetime";
   const Lifetime = {
     load: function () {
-      try { return JSON.parse(localStorage.getItem(LIFE_KEY)) || {}; }
-      catch (e) { return {}; }
+      var o;
+      try { o = JSON.parse(localStorage.getItem(LIFE_KEY)); } catch (e) { o = null; }
+      if (!o || typeof o !== "object") o = {};
+      return {
+        games: Math.max(0, Math.round(o.games || 0)),
+        moves: Math.max(0, Math.round(o.moves || 0)),
+        chains: Math.max(0, Math.round(o.chains || 0)),
+      };
     },
     save: function (o) { try { localStorage.setItem(LIFE_KEY, JSON.stringify(o)); } catch (e) { /* ignore */ } },
     // Records one finished run into the lifetime totals.
@@ -97,9 +118,15 @@
   const PLAT_REQ = DEFS.filter(function (d) { return d.tier !== "platinum"; }).map(function (d) { return d.id; });
   const Achievements = {
     defs: DEFS,
+    // Returns only ids that still exist in DEFS — stale ids from older
+    // versions are silently dropped so counts stay accurate.
     unlocked: function () {
-      try { return JSON.parse(localStorage.getItem(ACH_KEY)) || []; }
-      catch (e) { return []; }
+      var arr;
+      try { arr = JSON.parse(localStorage.getItem(ACH_KEY)); } catch (e) { return []; }
+      if (!Array.isArray(arr)) return [];
+      var known = {};
+      DEFS.forEach(function (d) { known[d.id] = 1; });
+      return arr.filter(function (id) { return known[id]; });
     },
     _save: function (arr) { try { localStorage.setItem(ACH_KEY, JSON.stringify(arr)); } catch (e) { /* ignore */ } },
     isUnlocked: function (id) { return Achievements.unlocked().indexOf(id) !== -1; },
@@ -127,6 +154,9 @@
     },
     count: function () { return Achievements.unlocked().length; },
     total: function () { return DEFS.length; },
+    // Dev/QA helpers.
+    unlockAll: function () { Achievements._save(DEFS.map(function (d) { return d.id; })); },
+    reset: function () { try { localStorage.removeItem(ACH_KEY); } catch (e) { /* ignore */ } },
   };
 
   CR.HighScores = HighScores;

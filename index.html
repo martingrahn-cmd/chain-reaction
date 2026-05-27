@@ -4,9 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Chain Reaction</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -96,6 +93,7 @@
   </div>
 
   <div class="ach-toast" id="achToast"></div>
+  <div class="resume-note" id="resumeNote">▸ RESUMED RUN</div>
 
   <script src="bg.js"></script>
   <script src="particles.js"></script>
@@ -220,6 +218,18 @@
       el.className = "go-rank " + r.cls;
     }
 
+    // --- GameVolt portal hooks (guarded; no-op standalone) ---------------
+    function portalSubmitScore(score) {
+      if (window.GameVolt && GameVolt.leaderboard) {
+        try { GameVolt.leaderboard.submit(score, { mode: "default" }); } catch (e) {}
+      }
+    }
+    function portalUnlock(id) {
+      if (window.GameVolt && GameVolt.achievements) {
+        try { GameVolt.achievements.unlock(id); } catch (e) {}
+      }
+    }
+
     // --- run finalization + achievements + toasts ------------------------
     function finalizeRun() {
       if (runFinalized) return;
@@ -230,10 +240,7 @@
         chain: game.stats.bestComboThisGame,
         date: Date.now(),
       });
-      // Portal leaderboard (optional — only when running inside GameVolt).
-      if (window.GameVolt && GameVolt.leaderboard) {
-        try { GameVolt.leaderboard.submit(game.score, { mode: "default" }); } catch (e) {}
-      }
+      portalSubmitScore(game.score); // optional — only when inside GameVolt
       CR.Lifetime.record(game.stats.moves, game.stats.chainsTriggered);
       checkAchievements(); // re-check now that lifetime totals went up
     }
@@ -249,12 +256,8 @@
         lifetimeMoves: CR.Lifetime.moves(),
       });
       newly.forEach(function (d) {
-        // Sync to the portal if present; we always show our own toast so it
-        // works standalone too.
-        if (window.GameVolt && GameVolt.achievements) {
-          try { GameVolt.achievements.unlock(d.id); } catch (e) {}
-        }
-        queueToast(d);
+        portalUnlock(d.id); // sync to portal if present
+        queueToast(d);      // our own toast always (works standalone)
       });
     }
 
@@ -675,11 +678,39 @@
       fx: function (n) { audio.unlock(); renderer.debugCombo(n || 3); },
       resolveFx: function (n) { audio.unlock(); renderer.debugResolve(n || 3); },
       milestoneFx: function (v) { audio.unlock(); renderer.debugMilestone(v || 2048); },
+      // Achievement / meta QA
+      unlockAll: function () { CR.Achievements.unlockAll(); openAchievements(); console.log("%c[dev] all trophies unlocked", "color:#ffd23f"); },
+      resetAch: function () { CR.Achievements.reset(); openAchievements(); console.log("%c[dev] trophies reset", "color:#ff5a2a"); },
+      score: function (n) {
+        n = n || 50000;
+        game.score = n;
+        if (n > game.bestScore) game.bestScore = n;
+        $("score").textContent = n;
+        $("best").textContent = game.bestScore;
+        checkAchievements();
+        console.log("%c[dev] score set to " + n, "color:#21e6ff");
+      },
+      portalTest: function () {
+        // Mock the portal SDK and assert each hook fires exactly once.
+        var real = window.GameVolt, subs = 0, unlocks = 0, sScore = null, uId = null;
+        window.GameVolt = {
+          leaderboard: { submit: function (v) { subs++; sScore = v; } },
+          achievements: { unlock: function (id) { unlocks++; uId = id; } },
+        };
+        portalSubmitScore(1234);
+        portalUnlock("t2048");
+        window.GameVolt = real;
+        var ok = subs === 1 && unlocks === 1 && sScore === 1234 && uId === "t2048";
+        console.log((ok ? "%cPASS" : "%cFAIL") + " [dev] portal contract — submit×" + subs + " unlock×" + unlocks,
+          "color:" + (ok ? "#27e07a" : "#ff5a2a"));
+        return ok;
+      },
       help: function () {
         console.log("%cChain Reaction — dev helpers", "font-weight:bold;color:#21e6ff");
         console.log("dev.set([16 or 4 values])   dev.chain2()   dev.chain3()");
         console.log("dev.milestone()   dev.almostOver()   dev.gameOver()");
-        console.log("dev.fx(n)   dev.resolveFx(n)   dev.milestoneFx(v)   (feel tests, no gameplay)");
+        console.log("dev.fx(n)   dev.resolveFx(n)   dev.milestoneFx(v)   (feel tests)");
+        console.log("dev.unlockAll()   dev.resetAch()   dev.score(n)   dev.portalTest()");
         console.log("Presets set the board — then swipe RIGHT to trigger. Add ?dev to the URL for buttons.");
       },
     };
@@ -711,6 +742,10 @@
         ["fx x4", function () { dev.fx(4); }],
         ["resolve", function () { dev.resolveFx(3); }],
         ["milestone fx", function () { dev.milestoneFx(2048); }],
+        ["unlock all", function () { dev.unlockAll(); }],
+        ["reset ach", function () { dev.resetAch(); }],
+        ["score 50k", function () { dev.score(50000); }],
+        ["portal test", function () { dev.portalTest(); }],
       ];
       devBtns.forEach(function (b) {
         var el = document.createElement("button");
@@ -741,6 +776,10 @@
         $("score").textContent = game.score;
         inputLocked = false;
         syncUI();
+        // Surface the silent restore so it's not confusing.
+        var note = $("resumeNote");
+        note.classList.add("show");
+        setTimeout(function () { note.classList.remove("show"); }, 1900);
       } else {
         startNewGame();
       }

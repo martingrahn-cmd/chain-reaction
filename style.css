@@ -1,4 +1,22 @@
 /* Chain Reaction — layout + neon UI */
+
+/* Self-hosted fonts (latin subset) — no external dependency, works offline.
+   Glyphs the pixel fonts lack (↶ ⟲ ☰ emoji) fall back to the system font. */
+@font-face {
+  font-family: "Press Start 2P";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/fonts/press-start-2p.woff2") format("woff2");
+}
+@font-face {
+  font-family: "VT323";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/fonts/vt323.woff2") format("woff2");
+}
+
 :root {
   --bg: #0a0a14;
   --panel: rgba(255, 255, 255, 0.05);
@@ -119,11 +137,7 @@ body::after {
 #score.bump {
   animation: scoreBump 0.32s ease-out;
 }
-@keyframes scoreBump {
-  0% { transform: scale(1); }
-  35% { transform: scale(1.45); color: #21e6ff; text-shadow: 0 0 18px rgba(33, 230, 255, 0.8); }
-  100% { transform: scale(1); }
-}
+/* keyframes scoreBump defined once in the retro section below */
 
 #board {
   width: var(--board);
@@ -165,12 +179,6 @@ button.btn:disabled { opacity: 0.35; cursor: default; }
   width: 44px;
   padding: 12px 0;
   font-size: 16px;
-}
-
-.hint {
-  font-size: 11px;
-  color: var(--muted);
-  letter-spacing: 1px;
 }
 
 /* Game over modal */
@@ -325,22 +333,6 @@ button.easy-toggle {
   max-height: 48vh;
   overflow-y: auto;
 }
-.ach {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--panel);
-  border: 1px solid rgba(120, 160, 255, 0.12);
-  text-align: left;
-}
-.ach.off { opacity: 0.45; }
-.ach.on { border-color: rgba(255, 210, 63, 0.5); box-shadow: 0 0 16px rgba(255, 210, 63, 0.12); }
-.ach-badge { font-size: 24px; line-height: 1; }
-.ach.on .ach-badge { color: #ffd23f; filter: drop-shadow(0 0 8px rgba(255, 210, 63, 0.6)); }
-.ach-name { font-weight: 800; }
-.ach-desc { font-size: 12px; color: var(--muted); }
 
 /* Achievement toast */
 .ach-toast {
@@ -368,13 +360,15 @@ button.easy-toggle {
 /* Dev panel (only injected when the URL has ?dev) */
 .dev-panel {
   position: fixed;
-  top: 8px;
+  bottom: 8px;
   left: 8px;
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse; /* toggle stays at the bottom, list opens upward */
   gap: 4px;
   z-index: 50;
-  opacity: 0.88;
+  opacity: 0.9;
+  max-height: 80vh;
+  overflow: auto;
 }
 .dev-panel button {
   font: 600 11px/1 "Trebuchet MS", system-ui, sans-serif;
@@ -637,3 +631,24 @@ button:focus-visible {
   outline-color: #a78bfa;
   box-shadow: 0 0 16px rgba(124, 92, 252, 0.55);
 }
+
+/* "RESUMED RUN" indicator — brief notice when a saved game is restored */
+.resume-note {
+  position: fixed;
+  top: max(14px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translate(-50%, -140%);
+  z-index: 40;
+  pointer-events: none;
+  font-family: "VT323", monospace;
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: #21e6ff;
+  background: rgba(10, 12, 24, 0.9);
+  border: 1px solid rgba(33, 230, 255, 0.4);
+  box-shadow: 0 0 22px rgba(33, 230, 255, 0.25);
+  border-radius: 10px;
+  padding: 7px 16px;
+  transition: transform 0.4s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+.resume-note.show { transform: translate(-50%, 0); }

@@ -333,9 +333,11 @@
       const raw = localStorage.getItem(LS_STATE);
       if (!raw) return false;
       const s = JSON.parse(raw);
-      if (!s || !s.cells || s.cells.length !== 16) return false;
-      if (!s.cells.some(function (v) { return v; })) return false;
-      this.board = s.cells.map(function (v, i) {
+      if (!s || s.v !== 1 || !Array.isArray(s.cells) || s.cells.length !== 16) return false;
+      // Coerce cells to clean tile values; ignore anything non-positive.
+      const cells = s.cells.map(function (v) { v = Math.round(+v) || 0; return v >= 2 ? v : 0; });
+      if (!cells.some(function (v) { return v; })) return false;
+      this.board = cells.map(function (v, i) {
         return v ? makeTile(v, Math.floor(i / 4), i % 4) : null;
       });
       this.score = s.score || 0;
