@@ -4,12 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Chain Reaction</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <canvas id="bg"></canvas>
   <div id="app">
     <div class="topbar">
-      <div class="title">CHAIN&nbsp;REACTION</div>
+      <div class="title">CHAIN REACTION</div>
       <div class="scores">
         <div class="stat"><div class="label">Score</div><div class="value" id="score">0</div></div>
         <div class="stat"><div class="label">Best</div><div class="value" id="best">0</div></div>
@@ -20,8 +24,7 @@
 
     <div class="controls">
       <button class="btn" id="undo">↶ UNDO (<span id="undoCount">1</span>)</button>
-      <button class="btn icon-btn" id="help" title="How to play" aria-label="How to play">?</button>
-      <button class="btn icon-btn" id="mute" title="Mute" aria-label="Mute">🔊</button>
+      <button class="btn" id="openMenu">☰ MENU</button>
       <button class="btn" id="newgame">⟲ NEW</button>
     </div>
   </div>
@@ -32,10 +35,6 @@
       <h2 id="tutTitle">HOW TO PLAY</h2>
       <p class="tut-body" id="tutBody"></p>
       <div class="tut-dots" id="tutDots"></div>
-      <div class="tut-setting">
-        <span class="tut-setting-label">Difficulty</span>
-        <button class="btn easy-toggle" id="easy">NORMAL</button>
-      </div>
       <div class="actions" style="flex-direction:row">
         <button class="btn" id="tutBack">BACK</button>
         <button class="btn primary" id="tutNext">NEXT</button>
@@ -46,18 +45,62 @@
   <div class="modal-backdrop" id="gameover">
     <div class="modal">
       <h2 id="goTitle">GAME OVER</h2>
+      <div class="go-rank" id="goRank"></div>
       <div class="row"><span class="k">Score</span><span class="v" id="goScore">0</span></div>
       <div class="row"><span class="k">Best</span><span class="v" id="goBest">0</span></div>
-      <div class="row"><span class="k">Longest chain</span><span class="v" id="goChain">0</span></div>
+      <div class="row"><span class="k">Max tile</span><span class="v" id="goMaxTile">0</span></div>
+      <div class="row"><span class="k">Best chain</span><span class="v" id="goBestChain">0</span></div>
+      <div class="row"><span class="k">Chains</span><span class="v" id="goChains">0</span></div>
+      <div class="row"><span class="k">Moves</span><span class="v" id="goMoves">0</span></div>
       <div class="actions">
         <button class="btn primary" id="tryAgain">TRY AGAIN</button>
         <button class="btn" id="continueEndless" style="display:none">CONTINUE ENDLESS</button>
+        <button class="btn" id="goHighscores">🏆 HIGH SCORES</button>
       </div>
     </div>
   </div>
 
+  <div class="modal-backdrop" id="menu">
+    <div class="modal">
+      <h2>MENU</h2>
+      <div class="menu-list">
+        <button class="btn primary" id="menuResume">▶ RESUME</button>
+        <button class="btn" id="menuHighscores">🏆 HIGH SCORES</button>
+        <button class="btn" id="menuAchievements">★ ACHIEVEMENTS</button>
+        <button class="btn" id="menuHowto">? HOW TO PLAY</button>
+        <button class="btn" id="menuNew">⟲ NEW GAME</button>
+      </div>
+      <div class="menu-settings">
+        <div class="tut-setting"><span class="tut-setting-label">Difficulty</span><button class="btn easy-toggle" id="easy">NORMAL</button></div>
+        <div class="tut-setting"><span class="tut-setting-label">Sound</span><button class="btn easy-toggle" id="soundToggle">ON</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="highscores">
+    <div class="modal">
+      <h2>HIGH SCORES</h2>
+      <div class="row"><span class="k">Best score</span><span class="v" id="hsBest">0</span></div>
+      <div class="row"><span class="k">Longest chain</span><span class="v" id="hsChain">0</span></div>
+      <ol class="hs-list" id="hsList"></ol>
+      <div class="actions"><button class="btn primary" id="hsBack">BACK</button></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="achievements">
+    <div class="modal">
+      <h2>ACHIEVEMENTS <span class="ach-count" id="achCount"></span></h2>
+      <div class="ach-list" id="achList"></div>
+      <div class="actions"><button class="btn primary" id="achBack">BACK</button></div>
+    </div>
+  </div>
+
+  <div class="ach-toast" id="achToast"></div>
+
+  <script src="bg.js"></script>
   <script src="particles.js"></script>
   <script src="audio.js"></script>
+  <script src="meta.js"></script>
   <script src="game.js"></script>
   <script src="render.js"></script>
   <script>
@@ -72,10 +115,17 @@
     var audio = new CR.AudioEngine();
 
     var $ = function (id) { return document.getElementById(id); };
+    // Release vs dev: only expose console helpers, logs and the test panel
+    // when the URL opts in (?dev). Keeps the shipped build quiet.
+    var DEV = /[?&]dev\b/.test(location.search);
     var inputLocked = false;
     var endlessMode = false;
     var won2048shown = false; // win sequence shown once per game
     var winThisMove = false;  // this move just reached 2048
+    var runFinalized = false; // high score / lifetime recorded for this run
+    var muted = false;
+    try { muted = localStorage.getItem("chainreaction.muted") === "1"; } catch (e) {}
+    audio.setMuted(muted);
 
     function syncUI() {
       $("score").textContent = game.score;
@@ -97,16 +147,18 @@
       onComplete: function () {
         inputLocked = false;
         syncUI();
+        checkAchievements(); // per-move unlocks (tiles, chains, score)
         if (winThisMove) {
           winThisMove = false;
           won2048shown = true;
           var deadOnWin = game.isGameOver; // reached 2048 AND no moves left
-          if (deadOnWin) audio.gameOver();
+          if (deadOnWin) { audio.gameOver(); finalizeRun(); }
           showWin(deadOnWin);
           return;
         }
         if (game.isGameOver) {
           audio.gameOver();              // falling tone as the board dims
+          finalizeRun();
           renderer.startGameOver(showGameOver); // modal fires after the dim
         }
       },
@@ -116,6 +168,7 @@
       endlessMode = false;
       won2048shown = false;
       winThisMove = false;
+      runFinalized = false;
       game.newGame();
       renderer.setBoard(game.board);
       $("gameover").classList.remove("show");
@@ -126,7 +179,7 @@
     }
 
     function modalOpen() {
-      return $("tutorial").classList.contains("show") || $("gameover").classList.contains("show");
+      return document.querySelector(".modal-backdrop.show") !== null;
     }
 
     function doMove(dir) {
@@ -147,10 +200,85 @@
       syncUI();
     }
 
+    // Reactor-state rank, driven by the biggest tile reached.
+    function rankFor(maxTile) {
+      if (maxTile >= 2048) return { label: "SYSTEM BREACH", cls: "breach" };
+      if (maxTile >= 512) return { label: "OVERLOAD", cls: "overload" };
+      return { label: "REACTOR STABLE", cls: "stable" };
+    }
+
     function fillModalStats() {
       $("goScore").textContent = game.score;
       $("goBest").textContent = game.bestScore;
-      $("goChain").textContent = game.longestChain;
+      $("goMaxTile").textContent = game.stats.maxTile;
+      $("goBestChain").textContent = "x" + game.stats.bestComboThisGame;
+      $("goChains").textContent = game.stats.chainsTriggered;
+      $("goMoves").textContent = game.stats.moves;
+      var r = rankFor(game.stats.maxTile);
+      var el = $("goRank");
+      el.textContent = r.label;
+      el.className = "go-rank " + r.cls;
+    }
+
+    // --- run finalization + achievements + toasts ------------------------
+    function finalizeRun() {
+      if (runFinalized) return;
+      runFinalized = true;
+      CR.HighScores.add({
+        score: game.score,
+        maxTile: game.stats.maxTile,
+        chain: game.stats.bestComboThisGame,
+        date: Date.now(),
+      });
+      // Portal leaderboard (optional — only when running inside GameVolt).
+      if (window.GameVolt && GameVolt.leaderboard) {
+        try { GameVolt.leaderboard.submit(game.score, { mode: "default" }); } catch (e) {}
+      }
+      CR.Lifetime.record(game.stats.moves, game.stats.chainsTriggered);
+      checkAchievements(); // re-check now that lifetime totals went up
+    }
+
+    function checkAchievements() {
+      var newly = CR.Achievements.check({
+        maxTile: game.stats.maxTile,
+        bestCombo: game.stats.bestComboThisGame,
+        score: game.score,
+        moves: game.stats.moves,
+        chains: game.stats.chainsTriggered,
+        games: CR.Lifetime.games(),
+        lifetimeMoves: CR.Lifetime.moves(),
+      });
+      newly.forEach(function (d) {
+        // Sync to the portal if present; we always show our own toast so it
+        // works standalone too.
+        if (window.GameVolt && GameVolt.achievements) {
+          try { GameVolt.achievements.unlock(d.id); } catch (e) {}
+        }
+        queueToast(d);
+      });
+    }
+
+    var toastQ = [], toastBusy = false;
+    function queueToast(def) { toastQ.push(def); if (!toastBusy) nextToast(); }
+    function nextToast() {
+      if (!toastQ.length) { toastBusy = false; return; }
+      toastBusy = true;
+      var d = toastQ.shift();
+      var el = $("achToast");
+      el.innerHTML = '<div class="ach-toast-badge"></div><div>' +
+        '<div class="ach-toast-label">ACHIEVEMENT</div>' +
+        '<div class="ach-toast-row"><span class="ach-toast-tier"></span><span class="ach-toast-name"></span></div></div>';
+      el.querySelector(".ach-toast-badge").textContent = d.icon || "★";
+      var tierEl = el.querySelector(".ach-toast-tier");
+      tierEl.textContent = (d.tier || "").toUpperCase();
+      tierEl.className = "ach-toast-tier " + (d.tier || "");
+      el.querySelector(".ach-toast-name").textContent = d.name;
+      el.classList.add("show");
+      if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) {} }
+      setTimeout(function () {
+        el.classList.remove("show");
+        setTimeout(nextToast, 380);
+      }, 2200);
     }
 
     // Real game over — board is locked, no continue.
@@ -161,6 +289,7 @@
       $("continueEndless").classList.remove("primary");
       $("tryAgain").classList.add("primary");
       $("gameover").classList.add("show");
+      focusFirst($("gameover"));
     }
 
     // Reached 2048. If the board is also dead, continue is a false promise —
@@ -178,6 +307,7 @@
         $("tryAgain").classList.remove("primary");
       }
       $("gameover").classList.add("show");
+      focusFirst($("gameover"));
     }
 
     // --- keyboard ---
@@ -189,6 +319,52 @@
     window.addEventListener("keydown", function (e) {
       var dir = KEYMAP[e.key];
       if (dir) { e.preventDefault(); doMove(dir); }
+    });
+
+    // --- full keyboard support for menus / overlays ---
+    function focusList(modal) {
+      return Array.prototype.slice.call(modal.querySelectorAll("button"))
+        .filter(function (b) { return b.offsetParent !== null && !b.disabled; });
+    }
+    function dismissModal(modal) {
+      switch (modal.id) {
+        case "menu": $("menuResume").click(); break;
+        case "highscores": $("hsBack").click(); break;
+        case "achievements": $("achBack").click(); break;
+        case "tutorial": closeTutorial(); break;
+        // gameover has no "dismiss" — you must pick Try Again / Continue
+      }
+    }
+    window.addEventListener("keydown", function (e) {
+      var modal = document.querySelector(".modal-backdrop.show");
+      if (!modal) {
+        // In-game: Escape or M opens the menu.
+        if (!inputLocked && !game.isGameOver && (e.key === "Escape" || e.key === "m" || e.key === "M")) {
+          e.preventDefault();
+          openMenu();
+        }
+        return;
+      }
+      var f = focusList(modal);
+      var cur = f.indexOf(document.activeElement);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        dismissModal(modal);
+      } else if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+        e.preventDefault();
+        if (f.length) f[cur < 0 ? 0 : (cur + 1) % f.length].focus();
+      } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        if (f.length) f[cur < 0 ? 0 : (cur - 1 + f.length) % f.length].focus();
+      } else if (e.key === "Tab") {
+        // Trap focus inside the open overlay.
+        e.preventDefault();
+        if (f.length) {
+          if (cur < 0) f[0].focus();
+          else f[(cur + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+        }
+      }
+      // Enter / Space activate the focused button natively.
     });
 
     // --- touch swipe (threshold ~30px) ---
@@ -235,14 +411,79 @@
       inputLocked = false;
       syncUI();
     });
-    $("mute").addEventListener("click", function () {
-      audio.unlock();
-      var m = $("mute").textContent === "🔊";
-      audio.setMuted(m);
-      $("mute").textContent = m ? "🔇" : "🔊";
-    });
 
-    // --- easy mode toggle ---
+    // --- menu + screen navigation ---
+    // Move keyboard focus to a screen's primary (or first) button.
+    function focusFirst(el) {
+      var b = el.querySelector("button.primary") || el.querySelector("button");
+      if (b) b.focus();
+    }
+    function showScreen(id) { var el = $(id); el.classList.add("show"); focusFirst(el); }
+    function hideScreen(id) { $(id).classList.remove("show"); }
+
+    function openMenu() { audio.unlock(); syncEasyButton(); syncSoundButton(); showScreen("menu"); }
+    $("openMenu").addEventListener("click", openMenu);
+    $("menuResume").addEventListener("click", function () { hideScreen("menu"); $("openMenu").focus(); });
+    $("menuNew").addEventListener("click", function () { hideScreen("menu"); startNewGame(); });
+    $("menuHowto").addEventListener("click", function () { hideScreen("menu"); openTutorial(); });
+    $("menuHighscores").addEventListener("click", function () { hideScreen("menu"); openHighScores("menu"); });
+    $("menuAchievements").addEventListener("click", function () { hideScreen("menu"); openAchievements(); });
+
+    var hsReturn = "menu"; // which screen the high-scores BACK button returns to
+
+    // High scores screen
+    function openHighScores(from) {
+      hsReturn = from || "menu";
+      $("hsBest").textContent = game.bestScore;
+      $("hsChain").textContent = game.longestChain;
+      var list = CR.HighScores.load();
+      if (!list.length) {
+        $("hsList").innerHTML = '<li class="hs-empty">No runs yet — play a game!</li>';
+      } else {
+        $("hsList").innerHTML = list.map(function (e) {
+          return '<li><span class="hs-score">' + e.score + '</span>' +
+            '<span class="hs-meta">tile ' + e.maxTile + ' · chain x' + e.chain + '</span></li>';
+        }).join("");
+      }
+      showScreen("highscores");
+    }
+    $("hsBack").addEventListener("click", function () { hideScreen("highscores"); showScreen(hsReturn); });
+    $("goHighscores").addEventListener("click", function () { hideScreen("gameover"); openHighScores("gameover"); });
+
+    // Achievements screen — grouped by tier, GameVolt trophy-card styling.
+    function openAchievements() {
+      var list = CR.Achievements.list();
+      $("achCount").textContent = "(" + CR.Achievements.count() + "/" + CR.Achievements.total() + ")";
+      var tiers = ["bronze", "silver", "gold", "platinum"];
+      var flat = [];
+      var html = "";
+      tiers.forEach(function (t) {
+        var items = list.filter(function (a) { return a.tier === t; });
+        if (!items.length) return;
+        var got = items.filter(function (a) { return a.unlocked; }).length;
+        html += '<div class="ach-tier-head ' + t + '">' + t.toUpperCase() +
+          ' <span>' + got + "/" + items.length + "</span></div>";
+        html += '<div class="ach-grid">' + items.map(function (a) {
+          flat.push(a);
+          return '<div class="ach-card ' + t + " " + (a.unlocked ? "unlocked" : "locked") + '">' +
+            '<div class="ach-card-icon"></div>' +
+            '<div class="ach-card-name"></div>' +
+            '<div class="ach-card-desc"></div></div>';
+        }).join("") + "</div>";
+      });
+      $("achList").innerHTML = html;
+      // set text safely (avoid HTML injection)
+      var cards = $("achList").querySelectorAll(".ach-card");
+      cards.forEach(function (card, i) {
+        card.querySelector(".ach-card-icon").textContent = flat[i].icon;
+        card.querySelector(".ach-card-name").textContent = flat[i].name;
+        card.querySelector(".ach-card-desc").textContent = flat[i].desc;
+      });
+      showScreen("achievements");
+    }
+    $("achBack").addEventListener("click", function () { hideScreen("achievements"); showScreen("menu"); });
+
+    // --- difficulty + sound toggles (live in the menu) ---
     function syncEasyButton() {
       $("easy").textContent = game.easyMode ? "EASY" : "NORMAL";
       $("easy").classList.toggle("active", game.easyMode);
@@ -252,6 +493,17 @@
       game.setEasy(!game.easyMode);
       syncEasyButton();
       startNewGame(); // difficulty applies to a fresh board
+    });
+    function syncSoundButton() {
+      $("soundToggle").textContent = muted ? "OFF" : "ON";
+      $("soundToggle").classList.toggle("active", !muted);
+    }
+    $("soundToggle").addEventListener("click", function () {
+      muted = !muted;
+      audio.setMuted(muted);
+      if (!muted) audio.unlock();
+      try { localStorage.setItem("chainreaction.muted", muted ? "1" : "0"); } catch (e) {}
+      syncSoundButton();
     });
 
     // --- tutorial ---
@@ -384,8 +636,8 @@
     function closeTutorial() {
       $("tutorial").classList.remove("show");
       try { localStorage.setItem(TUT_SEEN, "1"); } catch (e) {}
+      if (!document.querySelector(".modal-backdrop.show")) $("openMenu").focus();
     }
-    $("help").addEventListener("click", function () { audio.unlock(); openTutorial(); });
     $("tutBack").addEventListener("click", function () { if (tutIndex > 0) { tutIndex--; renderTut(); } });
     $("tutNext").addEventListener("click", function () {
       audio.unlock();
@@ -413,7 +665,7 @@
       if (msg) console.log("%c[dev] " + msg, "color:#21e6ff");
     }
     var DEAD_BOARD = [2, 4, 2, 4, 4, 2, 4, 2, 2, 4, 2, 4, 4, 2, 4, 2];
-    window.dev = {
+    if (DEV) window.dev = {
       set: function (v) { devSetBoard(v, "board set — swipe to play it"); },
       chain2: function () { devSetBoard([2, 2, 2, 2], "swipe RIGHT → chain x2"); },
       chain3: function () { devSetBoard([2, 2, 4, 8], "swipe RIGHT → chain x3 (max on a 4x4 line)"); },
@@ -431,11 +683,23 @@
         console.log("Presets set the board — then swipe RIGHT to trigger. Add ?dev to the URL for buttons.");
       },
     };
-    console.log("%c[Chain Reaction] dev helpers ready — run dev.help()", "color:#7c8db0");
+    if (DEV) console.log("%c[Chain Reaction] dev helpers ready — run dev.help()", "color:#7c8db0");
 
-    if (/[?&]dev\b/.test(location.search)) {
+    if (DEV) {
       var panel = document.createElement("div");
-      panel.className = "dev-panel";
+      panel.className = "dev-panel collapsed"; // start tucked away (mobile-safe)
+      var toggle = document.createElement("button");
+      toggle.className = "dev-toggle";
+      var body = document.createElement("div");
+      body.className = "dev-body";
+      function syncDevToggle() {
+        toggle.textContent = (panel.classList.contains("collapsed") ? "▸" : "▾") + " DEV";
+      }
+      toggle.addEventListener("click", function () {
+        panel.classList.toggle("collapsed");
+        syncDevToggle();
+      });
+      syncDevToggle();
       var devBtns = [
         ["[2,2,2,2]", function () { dev.chain2(); }],
         ["chain x3", function () { dev.chain3(); }],
@@ -452,8 +716,10 @@
         var el = document.createElement("button");
         el.textContent = b[0];
         el.addEventListener("click", b[1]);
-        panel.appendChild(el);
+        body.appendChild(el);
       });
+      panel.appendChild(toggle);
+      panel.appendChild(body);
       document.body.appendChild(panel);
     }
 
@@ -468,6 +734,7 @@
         won2048shown = game.has2048; // already past 2048 — don't replay the win
         endlessMode = game.has2048;
         winThisMove = false;
+        runFinalized = false;
         renderer.setBoard(game.board);
         $("gameover").classList.remove("show");
         $("continueEndless").style.display = "none";
@@ -479,15 +746,41 @@
       }
     }
 
+    // GameVolt portal SDK — optional. The portal injects /sdk/gamevolt.js;
+    // standalone it's simply absent and every call below is guarded. When
+    // shipping into the portal, include the SDK script (/sdk/gamevolt.js)
+    // before this one and the leaderboard/achievement hooks light up.
+    if (window.GameVolt) {
+      try {
+        GameVolt.init("chain-reaction");
+        if (GameVolt.save && GameVolt.save.registerMigration) {
+          GameVolt.save.registerMigration({
+            keys: ["chainreaction.highscores", "chainreaction.achievements", "chainreaction.bestScore"],
+            getScores: function () {
+              var b = parseInt(localStorage.getItem("chainreaction.bestScore") || "0", 10) || 0;
+              return b ? [{ score: b, mode: "default" }] : [];
+            },
+            getAchievements: function () {
+              try {
+                return (JSON.parse(localStorage.getItem("chainreaction.achievements")) || [])
+                  .map(function (id) { return { id: id, unlocked_at: Date.now() }; });
+              } catch (e) { return []; }
+            },
+          });
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     // --- go ---
     syncEasyButton();
+    syncSoundButton();
     resumeOrNew();
     // First-time players see the tutorial automatically.
     var seen = false;
     try { seen = localStorage.getItem(TUT_SEEN) === "1"; } catch (e) {}
     if (!seen) openTutorial();
-    // Logic self-check in the console (kick-off verification, step 3).
-    if (CR.runTests) CR.runTests();
+    // Regression suite — runs only in dev (?dev), never in the shipped build.
+    if (DEV && CR.runTests) CR.runTests();
   })();
   </script>
 </body>

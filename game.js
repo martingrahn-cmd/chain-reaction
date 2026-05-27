@@ -359,6 +359,7 @@
   CR.computeMove = computeMove;
   CR.slideBoard = slideBoard;
   CR.canMove = canMove;
+  CR.spawnRandom = spawnRandom;
   CR.Game = Game;
 
   // --- Console test harness (verification cases from the kick-off doc) ----
@@ -376,41 +377,116 @@
       return board[c] ? board[c].value : null;
     });
   }
+  function boardFrom(arr) {
+    return arr.map(function (v, i) { return v ? makeTile(v, Math.floor(i / 4), i % 4) : null; });
+  }
+  function values(board) {
+    return board.map(function (t) { return t ? t.value : 0; });
+  }
+
   CR.runTests = function () {
-    const cases = [
-      { in: [2, 2, 2, 2], expect: [null, null, null, 8], combo: 2 },
-      { in: [4, 2, 2, 4], expect: [null, null, 4, 8], combo: 2 }, // doc table is wrong; sum must stay 12
-      { in: [2, null, null, 2], expect: [null, null, null, 4], combo: 1 },
-      { in: [2, 2, 4, 4], expect: [null, null, 4, 8], combo: 1 }, // doc table is wrong; sum must stay 12
-      { in: [4, null, 4, null], expect: [null, null, null, 8], combo: 1 },
-    ];
-    console.log("%c Chain Reaction — logic tests (swipe right)", "font-weight:bold");
-    let pass = 0;
-    cases.forEach(function (tc, i) {
-      const plan = computeMove(lineToBoardRight(tc.in), "right");
-      const result = boardRow0(plan.finalBoard);
-      const ok = JSON.stringify(result) === JSON.stringify(tc.expect) && plan.chainLength === tc.combo;
-      if (ok) pass++;
-      console.log(
-        (ok ? "PASS " : "FAIL ") + JSON.stringify(tc.in),
-        "->", JSON.stringify(result),
-        "combo x" + plan.chainLength,
-        "score", plan.totalScore,
-        ok ? "" : "(expected " + JSON.stringify(tc.expect) + " x" + tc.combo + ")"
-      );
-    });
+    let pass = 0, fail = 0;
+    function check(name, cond, extra) {
+      if (cond) { pass++; console.log("PASS " + name); }
+      else { fail++; console.log("FAIL " + name + (extra ? "  " + extra : "")); }
+    }
 
-    // Game-over: full board, no equal neighbours.
-    const goBoard = [
-      2, 4, 2, 4,
-      4, 2, 4, 2,
-      2, 4, 2, 4,
-      4, 2, 4, 2,
-    ].map(function (v, i) { return makeTile(v, Math.floor(i / 4), i % 4); });
-    const go = !canMove(goBoard);
-    console.log((go ? "PASS " : "FAIL ") + "game-over detection: isGameOver =", go);
+    // Math.random mock (FIFO queue, falls back to real once drained).
+    const realRandom = Math.random;
+    function mockRandom(seq) {
+      let i = 0;
+      Math.random = function () { return i < seq.length ? seq[i++] : realRandom(); };
+    }
 
-    console.log("%c " + pass + "/" + cases.length + " logic cases passed", "font-weight:bold");
-    return pass === cases.length && go;
+    // Isolate the Game's localStorage keys so running tests never clobbers a
+    // real in-progress game / best score.
+    const KEYS = ["chainreaction.gameState", "chainreaction.bestScore", "chainreaction.longestChain", "chainreaction.easyMode"];
+    const backup = {};
+    KEYS.forEach(function (k) { try { backup[k] = localStorage.getItem(k); } catch (e) {} });
+    KEYS.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+
+    console.log("%c Chain Reaction — regression suite", "font-weight:bold");
+    try {
+      // 1) Slide-right line cases (incl. the kick-off verification table).
+      const cases = [
+        { in: [2, 2, 2, 2], expect: [null, null, null, 8], combo: 2 },
+        { in: [4, 2, 2, 4], expect: [null, null, 4, 8], combo: 2 }, // doc table wrong; sum must stay 12
+        { in: [2, null, null, 2], expect: [null, null, null, 4], combo: 1 },
+        { in: [2, 2, 4, 4], expect: [null, null, 4, 8], combo: 1 }, // doc table wrong; sum must stay 12
+        { in: [4, null, 4, null], expect: [null, null, null, 8], combo: 1 },
+      ];
+      cases.forEach(function (tc) {
+        const plan = computeMove(lineToBoardRight(tc.in), "right");
+        const result = boardRow0(plan.finalBoard);
+        check("right " + JSON.stringify(tc.in),
+          JSON.stringify(result) === JSON.stringify(tc.expect) && plan.chainLength === tc.combo,
+          "got " + JSON.stringify(result) + " x" + plan.chainLength);
+      });
+
+      // 2) All four directions merge toward the correct wall.
+      // right: [2,2,_,_] -> 4 at index 3
+      check("dir right", values(computeMove(boardFrom([2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), "right").finalBoard)[3] === 4);
+      // left: [_,_,2,2] -> 4 at index 0
+      check("dir left", values(computeMove(boardFrom([0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), "left").finalBoard)[0] === 4);
+      // up: col0 rows2,3 -> 4 at index 0
+      check("dir up", values(computeMove(boardFrom([0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0]), "up").finalBoard)[0] === 4);
+      // down: col0 rows0,1 -> 4 at index 12
+      check("dir down", values(computeMove(boardFrom([2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), "down").finalBoard)[12] === 4);
+
+      // 3) Undo restores the exact pre-move board and score.
+      (function () {
+        const g = new Game();
+        g.board = boardFrom([2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        g.score = 0; g.undosRemaining = 1; g.previousState = null; g.isGameOver = false;
+        const before = values(g.board);
+        mockRandom([0, 0]); // deterministic spawn
+        const plan = g.move("right");
+        const movedOk = !!plan && g.score === 4;
+        g.undo();
+        check("undo restores board+score", movedOk && JSON.stringify(values(g.board)) === JSON.stringify(before) && g.score === 0);
+      })();
+
+      // 4) Easy-mode spawn chance honours spawn4Chance via mocked random.
+      mockRandom([0, 0.03]);
+      check("easy: roll 0.03 < 0.04 -> 4", spawnRandom(new Array(16).fill(null), 0.04).value === 4);
+      mockRandom([0, 0.05]);
+      check("easy: roll 0.05 >= 0.04 -> 2", spawnRandom(new Array(16).fill(null), 0.04).value === 2);
+      mockRandom([0, 0.05]);
+      check("normal: roll 0.05 < 0.1 -> 4", spawnRandom(new Array(16).fill(null), 0.1).value === 4);
+
+      // 5) Game over after the spawn fills the last cell with no moves left.
+      (function () {
+        const g = new Game();
+        g.board = boardFrom([2, 4, 2, 4, 4, 8, 4, 8, 2, 4, 2, 4, 8, 8, 4, 8]);
+        g.score = 0; g.isGameOver = false; g.has2048 = false; g.undosRemaining = 1; g.previousState = null;
+        mockRandom([0, 0.05]); // only one empty after the merge; value 4 -> dead board
+        const plan = g.move("right");
+        check("game over after spawn", !!plan && g.isGameOver === true);
+      })();
+
+      // 6) Win + game over on the same move (reach 2048 onto a dead board).
+      (function () {
+        const g = new Game();
+        g.board = boardFrom([2, 4, 2, 4, 4, 8, 4, 8, 2, 4, 2, 4, 1024, 1024, 4, 8]);
+        g.score = 0; g.isGameOver = false; g.has2048 = false; g.undosRemaining = 1; g.previousState = null;
+        mockRandom([0, 0.05]); // spawn 4 into the freed cell -> dead
+        const plan = g.move("right");
+        check("win + game over edge case", !!plan && g.has2048 === true && g.isGameOver === true);
+      })();
+
+      // Static game-over detection.
+      check("game-over detection", !canMove(boardFrom([2, 4, 2, 4, 4, 2, 4, 2, 2, 4, 2, 4, 4, 2, 4, 2])));
+    } finally {
+      Math.random = realRandom;
+      KEYS.forEach(function (k) {
+        try {
+          if (backup[k] == null) localStorage.removeItem(k);
+          else localStorage.setItem(k, backup[k]);
+        } catch (e) {}
+      });
+    }
+
+    console.log("%c " + pass + "/" + (pass + fail) + " tests passed", "font-weight:bold;color:" + (fail ? "#ff5a2a" : "#27e07a"));
+    return fail === 0;
   };
 })((window.CR = window.CR || {}));

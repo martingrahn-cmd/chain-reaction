@@ -37,6 +37,9 @@
     2: "#21e6ff", 4: "#2a7bff", 8: "#27e07a", 16: "#8de01f",
     32: "#f4e21f", 64: "#ff9b2a", 128: "#ff5a2a", 256: "#ff2ea8",
     512: "#a14bff", 1024: "#ff3fae", 2048: "#ffffff",
+    // Endless / prestige tiers beyond the 2048 goal.
+    4096: "#ffd23f", 8192: "#ff7b54", 16384: "#c46bff",
+    32768: "#5cf2c0", 65536: "#7ad7ff",
   };
   function tileColor(value) {
     return COLORS[value] || "#ffffff";
@@ -119,6 +122,7 @@
     this.motionScale = 1;     // dialled down when the user prefers reduced motion
     this._lastFrame = performance.now();
     this._initMotionPref();
+    this._initPerf();
     this.resize();
     const self = this;
     requestAnimationFrame(function f(now) { self._frame(now); requestAnimationFrame(f); });
@@ -140,6 +144,17 @@
     } catch (e) {
       this.motionScale = 1;
     }
+  };
+
+  // Particle budget: lower the cap on low-end devices up front, and degrade
+  // once more if sustained FPS is poor, so big moments never tank the frame.
+  Renderer.prototype._initPerf = function () {
+    var lowEnd = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
+                 (navigator.deviceMemory && navigator.deviceMemory <= 4);
+    this.particles.max = lowEnd ? 160 : 340;
+    this._fpsEMA = 60;
+    this._frames = 0;
+    this._degraded = false;
   };
 
   Renderer.prototype.resize = function () {
@@ -472,8 +487,20 @@
   };
 
   Renderer.prototype._frame = function (now) {
-    const dt = Math.min(0.05, (now - this._lastFrame) / 1000);
+    const rawDt = (now - this._lastFrame) / 1000;
+    const dt = Math.min(0.05, rawDt);
     this._lastFrame = now;
+
+    // Sustained-FPS watchdog: degrade the particle budget once if struggling.
+    this._frames++;
+    const fps = rawDt > 0 ? 1 / rawDt : 60;
+    this._fpsEMA = this._fpsEMA * 0.9 + fps * 0.1;
+    if (!this._degraded && this._frames > 180 && this._fpsEMA < 42) {
+      this._degraded = true;
+      this.particles.max = 110;
+      this.particles.intensity = Math.min(this.particles.intensity, 0.5);
+    }
+
     this.particles.update(dt);
     this._update(now, dt);
     this._draw(now);
@@ -868,7 +895,7 @@
     ctx.textBaseline = "middle";
     const str = String(value);
     const ref = Math.min(w, h);
-    const fontSize = ref * (str.length >= 4 ? 0.3 : str.length === 3 ? 0.36 : 0.44);
+    const fontSize = ref * (str.length >= 5 ? 0.24 : str.length >= 4 ? 0.3 : str.length === 3 ? 0.36 : 0.44);
     ctx.font = "700 " + fontSize + "px 'Trebuchet MS', system-ui, sans-serif";
     ctx.shadowColor = "rgba(0,0,0,0.35)";
     ctx.shadowBlur = 2;

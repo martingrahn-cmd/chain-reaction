@@ -7,12 +7,15 @@
   function ParticleSystem() {
     this.particles = [];
     this.intensity = 1; // scaled down under prefers-reduced-motion
+    this.max = 340;     // hard cap on live particles (lowered on low-end)
   }
 
   // Emit `count` particles outward from (x, y) in `color`.
   ParticleSystem.prototype.burst = function (x, y, color, count, power) {
     count = Math.max(1, Math.round((count || 14) * this.intensity));
     power = power || 1;
+    // Never exceed the budget — the biggest moments must not drop frames.
+    count = Math.min(count, this.max);
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = (60 + Math.random() * 180) * power;
@@ -26,6 +29,10 @@
         size: (2 + Math.random() * 3) * power,
         color: color,
       });
+    }
+    // Trim oldest if a flurry pushed us over budget.
+    if (this.particles.length > this.max) {
+      this.particles.splice(0, this.particles.length - this.max);
     }
   };
 

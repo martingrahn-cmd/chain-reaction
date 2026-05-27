@@ -12,7 +12,12 @@
 html, body {
   margin: 0;
   height: 100%;
-  background: radial-gradient(circle at 50% 0%, #131326 0%, #0a0a14 60%);
+  /* Neon glows over deep space so the desktop letterbox isn't dead black */
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(124, 92, 252, 0.20), transparent 55%),
+    radial-gradient(ellipse at 12% 108%, rgba(33, 230, 255, 0.12), transparent 50%),
+    radial-gradient(ellipse at 88% 108%, rgba(255, 46, 168, 0.12), transparent 50%),
+    #07070f;
   color: var(--text);
   font-family: "Trebuchet MS", system-ui, -apple-system, sans-serif;
   overflow: hidden;
@@ -20,6 +25,29 @@ html, body {
   -webkit-user-select: none;
   touch-action: none;
 }
+
+/* The animated neon grid + random light pulses live on the #bg canvas; CRT
+   scanlines sit on top. The board canvas is opaque and above both, so
+   gameplay stays crisp. */
+#bg {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  display: block;
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px);
+  opacity: 0.5;
+}
+#app { position: relative; z-index: 1; }
 
 #app {
   /* --board is sized by whichever is smallest: width, a hard cap, or the
@@ -48,20 +76,23 @@ html, body {
 .topbar {
   width: var(--board);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
 }
 
 .title {
-  font-size: clamp(18px, 4.5vw, 26px);
-  font-weight: 800;
-  letter-spacing: 2px;
+  font-family: "Press Start 2P", system-ui, monospace;
+  font-size: clamp(11px, 3.1vw, 20px);
+  letter-spacing: 1px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-align: center;
   background: linear-gradient(90deg, #21e6ff, #ff2ea8);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 24px rgba(33, 230, 255, 0.25);
+  filter: drop-shadow(0 0 10px rgba(33, 230, 255, 0.5)) drop-shadow(0 0 16px rgba(255, 46, 168, 0.25));
 }
 
 .scores { display: flex; gap: 10px; }
@@ -157,6 +188,8 @@ button.btn:disabled { opacity: 0.35; cursor: default; }
 
 .modal {
   width: min(86vw, 380px);
+  max-height: 88vh;
+  overflow-y: auto;
   background: linear-gradient(180deg, #15172b, #0c0d18);
   border: 1px solid rgba(120, 160, 255, 0.25);
   border-radius: 20px;
@@ -242,6 +275,96 @@ button.easy-toggle {
   font-size: 13px;
 }
 
+/* Menu */
+.menu-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 14px; }
+.menu-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid rgba(120, 160, 255, 0.14);
+  padding-top: 14px;
+}
+.menu-settings .tut-setting { justify-content: space-between; margin: 0; }
+
+/* High scores */
+.hs-list {
+  list-style: none;
+  counter-reset: hs;
+  margin: 12px 0 16px;
+  padding: 0;
+  max-height: 42vh;
+  overflow-y: auto;
+  text-align: left;
+}
+.hs-list li {
+  counter-increment: hs;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid rgba(120, 160, 255, 0.1);
+}
+.hs-list li::before {
+  content: counter(hs);
+  color: var(--muted);
+  font-weight: 800;
+  width: 20px;
+  text-align: right;
+}
+.hs-score { font-weight: 800; font-size: 17px; }
+.hs-meta { margin-left: auto; color: var(--muted); font-size: 12px; }
+.hs-empty { color: var(--muted); text-align: center; padding: 16px; }
+
+/* Achievements */
+.ach-count { font-size: 13px; color: var(--muted); -webkit-text-fill-color: var(--muted); }
+.ach-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 16px;
+  max-height: 48vh;
+  overflow-y: auto;
+}
+.ach {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid rgba(120, 160, 255, 0.12);
+  text-align: left;
+}
+.ach.off { opacity: 0.45; }
+.ach.on { border-color: rgba(255, 210, 63, 0.5); box-shadow: 0 0 16px rgba(255, 210, 63, 0.12); }
+.ach-badge { font-size: 24px; line-height: 1; }
+.ach.on .ach-badge { color: #ffd23f; filter: drop-shadow(0 0 8px rgba(255, 210, 63, 0.6)); }
+.ach-name { font-weight: 800; }
+.ach-desc { font-size: 12px; color: var(--muted); }
+
+/* Achievement toast */
+.ach-toast {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translate(-50%, -160%);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: linear-gradient(180deg, #15172b, #0c0d18);
+  border: 1px solid rgba(255, 210, 63, 0.5);
+  box-shadow: 0 0 30px rgba(255, 210, 63, 0.25);
+  border-radius: 14px;
+  padding: 10px 18px;
+  z-index: 60;
+  transition: transform 0.35s cubic-bezier(0.2, 1.3, 0.4, 1);
+  pointer-events: none;
+}
+.ach-toast.show { transform: translate(-50%, 0); }
+.ach-toast-badge { font-size: 24px; color: #ffd23f; filter: drop-shadow(0 0 8px rgba(255, 210, 63, 0.6)); }
+.ach-toast-title { font-size: 10px; letter-spacing: 2px; color: var(--muted); }
+.ach-toast-name { font-weight: 800; }
+
 /* Dev panel (only injected when the URL has ?dev) */
 .dev-panel {
   position: fixed;
@@ -277,4 +400,240 @@ button.easy-toggle {
 @media (max-height: 700px) {
   #app { gap: 8px; --reserved: 138px; }
   .stat { padding: 5px 12px; }
+}
+
+/* ============================================================
+   GameVolt portal "chrome" — applied ONLY to the meta UI
+   (menus, modals, high scores, achievements, toast). The game
+   board and its neon HUD keep their own identity.
+   ============================================================ */
+:root {
+  --gv-primary: #7c5cfc;
+  --gv-surface: #181c30;
+  --gv-text: #f0f0ff;
+  --gv-muted: #a0a4c0;
+  --gv-border: rgba(124, 92, 252, 0.2);
+  --gv-grad: linear-gradient(135deg, #7c5cfc 0%, #38bdf8 50%, #06d6a0 100%);
+  --gv-bronze: #cd7f32;
+  --gv-silver: #c0c0c0;
+  --gv-gold: #ffd700;
+  --gv-platinum: #b4ffff;
+  --gv-radius: 16px;
+}
+
+/* Panels / modals */
+.modal {
+  background: linear-gradient(180deg, #1a1f38, #10142a);
+  border: 1px solid var(--gv-border);
+  border-radius: var(--gv-radius);
+  font-family: "Nunito", system-ui, sans-serif;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(124, 92, 252, 0.12);
+}
+.modal h2 {
+  font-family: "Fredoka", system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: var(--gv-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.modal .row .k { color: var(--gv-muted); }
+
+/* Buttons inside chrome (control-row buttons on the game screen stay neon) */
+.modal .btn {
+  font-family: "Nunito", system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  background: var(--gv-surface);
+  border: 1px solid var(--gv-border);
+  color: var(--gv-text);
+  border-radius: 10px;
+}
+.modal .btn:hover { border-color: var(--gv-primary); background: rgba(124, 92, 252, 0.14); }
+.modal .btn.primary { background: var(--gv-grad); color: #0a0c18; border: none; }
+.modal .btn.primary:hover { filter: brightness(1.08); }
+.modal .btn.easy-toggle.active { border-color: #06d6a0; background: rgba(6, 214, 160, 0.16); color: #7ef0c8; }
+
+/* High-score ranks: gold / silver / bronze for the top three */
+.hs-list li:nth-child(1)::before { color: var(--gv-gold); }
+.hs-list li:nth-child(2)::before { color: var(--gv-silver); }
+.hs-list li:nth-child(3)::before { color: var(--gv-bronze); }
+
+/* Achievements — tier headers + trophy cards */
+.ach-tier-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: "Fredoka", system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 2px;
+  font-size: 13px;
+  text-align: left;
+  margin: 14px 0 8px;
+}
+.ach-tier-head span { color: var(--gv-muted); font-size: 12px; letter-spacing: 1px; }
+.ach-tier-head.bronze { color: var(--gv-bronze); }
+.ach-tier-head.silver { color: var(--gv-silver); }
+.ach-tier-head.gold { color: var(--gv-gold); }
+.ach-tier-head.platinum { color: var(--gv-platinum); }
+
+.ach-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.ach-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 8px;
+  text-align: center;
+}
+.ach-card.locked { opacity: 0.42; filter: grayscale(0.7); }
+.ach-card.unlocked.bronze { border-color: rgba(205, 127, 50, 0.45); background: rgba(205, 127, 50, 0.07); }
+.ach-card.unlocked.silver { border-color: rgba(192, 192, 192, 0.45); background: rgba(192, 192, 192, 0.07); }
+.ach-card.unlocked.gold { border-color: rgba(255, 215, 0, 0.45); background: rgba(255, 215, 0, 0.08); }
+.ach-card.unlocked.platinum {
+  border-color: rgba(180, 255, 255, 0.5);
+  background: rgba(180, 255, 255, 0.08);
+  box-shadow: 0 0 18px rgba(180, 255, 255, 0.15);
+}
+.ach-card-icon { font-size: 28px; line-height: 1; margin-bottom: 6px; }
+.ach-card-name { font-weight: 800; font-size: 13px; color: var(--gv-text); }
+.ach-card-desc { font-size: 11px; color: var(--gv-muted); margin-top: 2px; }
+
+/* Trophy toast — GameVolt style: slides up from the bottom, tier-coloured */
+.ach-toast {
+  top: auto;
+  bottom: 24px;
+  left: 50%;
+  transform: translate(-50%, 180%);
+  font-family: "Nunito", system-ui, sans-serif;
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  box-shadow: 0 0 30px rgba(255, 215, 0, 0.2);
+}
+.ach-toast.show { transform: translate(-50%, 0); }
+.ach-toast-label { font-size: 9px; letter-spacing: 3px; color: var(--gv-muted); font-weight: 700; }
+.ach-toast-row { display: flex; gap: 8px; align-items: baseline; }
+.ach-toast-tier { font-size: 9px; font-weight: 800; letter-spacing: 2px; }
+.ach-toast-tier.bronze { color: var(--gv-bronze); }
+.ach-toast-tier.silver { color: var(--gv-silver); }
+.ach-toast-tier.gold { color: var(--gv-gold); }
+.ach-toast-tier.platinum { color: var(--gv-platinum); }
+.ach-toast-name { font-family: "Fredoka", system-ui, sans-serif; font-size: 15px; font-weight: 700; color: #fff; }
+.ach-toast-badge { font-size: 26px; }
+
+/* End-screen reactor rank */
+.go-rank {
+  font-family: "Fredoka", system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 3px;
+  font-size: 14px;
+  margin: -2px 0 14px;
+}
+.go-rank.stable { color: #06d6a0; text-shadow: 0 0 14px rgba(6, 214, 160, 0.5); }
+.go-rank.overload { color: #ffb02e; text-shadow: 0 0 14px rgba(255, 176, 46, 0.5); }
+.go-rank.breach { color: #ff2ea8; text-shadow: 0 0 16px rgba(255, 46, 168, 0.6); }
+
+/* Dev panel — collapsible header so it can be tucked away on mobile */
+.dev-panel.collapsed .dev-body { display: none; }
+.dev-toggle {
+  font: 700 11px/1 "Trebuchet MS", system-ui, sans-serif;
+  background: #1a1f38;
+  color: #21e6ff;
+  border: 1px solid rgba(33, 230, 255, 0.4);
+  border-radius: 6px;
+  padding: 6px 9px;
+  cursor: pointer;
+  text-align: left;
+  letter-spacing: 1px;
+}
+.dev-body { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+
+/* ============================================================
+   Retro arcade / CRT pass — menus lean into a TV-game look.
+   Press Start 2P for headings, VT323 for readouts; CRT scanlines
+   over the menu screens. Keeps the GameVolt colour tokens.
+   ============================================================ */
+
+/* In-game HUD readouts */
+.stat .label { font-family: "VT323", monospace; font-size: 13px; letter-spacing: 2px; }
+.stat .value { font-family: "VT323", monospace; font-size: clamp(22px, 5.5vw, 30px); line-height: 1; }
+@keyframes scoreBump {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.4); color: #21e6ff; text-shadow: 0 0 18px rgba(33, 230, 255, 0.9); }
+  100% { transform: scale(1); }
+}
+
+/* Control-row buttons → chunky arcade text */
+button.btn {
+  font-family: "VT323", monospace;
+  font-size: 19px;
+  letter-spacing: 1px;
+}
+
+/* Menu / modal screens */
+.modal {
+  font-family: "VT323", monospace;
+  border-width: 2px;
+}
+.modal h2 {
+  font-family: "Press Start 2P", system-ui, monospace;
+  font-size: clamp(13px, 4vw, 19px);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.modal .row { font-size: 19px; }
+.modal .row .k { letter-spacing: 1px; }
+.modal .btn {
+  font-family: "VT323", monospace;
+  font-size: 19px;
+  letter-spacing: 1px;
+  border-radius: 8px;
+}
+
+/* CRT scanlines over any open menu/overlay (pointer-events: none) */
+.modal-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+  opacity: 0.45;
+  z-index: 2;
+  mix-blend-mode: multiply;
+}
+
+/* High-score readout */
+.hs-score { font-family: "VT323", monospace; font-size: 22px; }
+.hs-meta { font-family: "VT323", monospace; font-size: 15px; }
+.hs-list li::before { font-family: "VT323", monospace; font-size: 20px; }
+.hs-empty { font-family: "VT323", monospace; font-size: 18px; }
+
+/* Achievements */
+.ach-tier-head { font-family: "Press Start 2P", system-ui, monospace; font-size: 10px; }
+.ach-tier-head span { font-family: "VT323", monospace; font-size: 15px; letter-spacing: 0; }
+.ach-count { font-family: "VT323", monospace; font-size: 17px; }
+.ach-card-name { font-family: "VT323", monospace; font-size: 16px; }
+.ach-card-desc { font-family: "VT323", monospace; font-size: 13px; line-height: 1.15; }
+
+/* End-screen rank + tutorial + toast */
+.go-rank { font-family: "Press Start 2P", system-ui, monospace; font-size: 11px; letter-spacing: 2px; line-height: 1.6; }
+.tut-body { font-family: "VT323", monospace; font-size: 19px; line-height: 1.3; }
+.tut-setting-label { font-family: "VT323", monospace; font-size: 15px; }
+.ach-toast-name { font-family: "Press Start 2P", system-ui, monospace; font-size: 11px; line-height: 1.5; }
+.ach-toast-label, .ach-toast-tier { font-family: "VT323", monospace; }
+
+/* Keyboard focus ring (only for keyboard nav, not mouse clicks) */
+button:focus { outline: none; }
+button:focus-visible {
+  outline: 2px solid #21e6ff;
+  outline-offset: 2px;
+  box-shadow: 0 0 14px rgba(33, 230, 255, 0.5);
+}
+.modal button:focus-visible {
+  outline-color: #a78bfa;
+  box-shadow: 0 0 16px rgba(124, 92, 252, 0.55);
 }
