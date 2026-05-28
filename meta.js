@@ -53,21 +53,29 @@
         games: Math.max(0, Math.round(o.games || 0)),
         moves: Math.max(0, Math.round(o.moves || 0)),
         chains: Math.max(0, Math.round(o.chains || 0)),
+        score: Math.max(0, Math.round(o.score || 0)),
+        maxTile: Math.max(0, Math.round(o.maxTile || 0)),
       };
     },
     save: function (o) { try { localStorage.setItem(LIFE_KEY, JSON.stringify(o)); } catch (e) { /* ignore */ } },
     // Records one finished run into the lifetime totals.
-    record: function (moves, chains) {
+    record: function (run) {
+      run = run || {};
       const l = Lifetime.load();
-      l.games = (l.games || 0) + 1;
-      l.moves = (l.moves || 0) + (moves || 0);
-      l.chains = (l.chains || 0) + (chains || 0);
+      l.games += 1;
+      l.moves += run.moves || 0;
+      l.chains += run.chains || 0;
+      l.score += run.score || 0;
+      l.maxTile = Math.max(l.maxTile, run.maxTile || 0);
       Lifetime.save(l);
       return l;
     },
-    games: function () { return Lifetime.load().games || 0; },
-    moves: function () { return Lifetime.load().moves || 0; },
-    chains: function () { return Lifetime.load().chains || 0; },
+    games: function () { return Lifetime.load().games; },
+    moves: function () { return Lifetime.load().moves; },
+    chains: function () { return Lifetime.load().chains; },
+    scoreTotal: function () { return Lifetime.load().score; },
+    maxTile: function () { return Lifetime.load().maxTile; },
+    avgScore: function () { const l = Lifetime.load(); return l.games ? Math.round(l.score / l.games) : 0; },
   };
 
   // ---- Achievements ----------------------------------------------------
@@ -159,7 +167,36 @@
     reset: function () { try { localStorage.removeItem(ACH_KEY); } catch (e) { /* ignore */ } },
   };
 
+  // ---- Run goals -------------------------------------------------------
+  // Ephemeral per-run mini-objectives. ctx = { maxTile, bestCombo, score,
+  // moves, chains } for the current run.
+  const GOAL_POOL = [
+    { id: "reach256",  label: "Reach a 256 tile",      test: function (c) { return c.maxTile >= 256; } },
+    { id: "reach512",  label: "Reach a 512 tile",      test: function (c) { return c.maxTile >= 512; } },
+    { id: "reach1024", label: "Reach a 1024 tile",     test: function (c) { return c.maxTile >= 1024; } },
+    { id: "chains3",   label: "Trigger 3 chains",      test: function (c) { return c.chains >= 3; } },
+    { id: "chains6",   label: "Trigger 6 chains",      test: function (c) { return c.chains >= 6; } },
+    { id: "combo3",    label: "Pull off a 3-chain",    test: function (c) { return c.bestCombo >= 3; } },
+    { id: "score2k",   label: "Score 2,000",           test: function (c) { return c.score >= 2000; } },
+    { id: "score5k",   label: "Score 5,000",           test: function (c) { return c.score >= 5000; } },
+    { id: "moves40",   label: "Make 40 moves",         test: function (c) { return c.moves >= 40; } },
+  ];
+  const RunGoals = {
+    // Returns `n` distinct goals (shuffled copy of the pool).
+    pick: function (n) {
+      const a = GOAL_POOL.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = (Math.random() * (i + 1)) | 0;
+        const t = a[i]; a[i] = a[j]; a[j] = t;
+      }
+      return a.slice(0, n || 3).map(function (g) {
+        return { id: g.id, label: g.label, test: g.test, done: false };
+      });
+    },
+  };
+
   CR.HighScores = HighScores;
   CR.Lifetime = Lifetime;
   CR.Achievements = Achievements;
+  CR.RunGoals = RunGoals;
 })((window.CR = window.CR || {}));

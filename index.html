@@ -43,12 +43,14 @@
     <div class="modal">
       <h2 id="goTitle">GAME OVER</h2>
       <div class="go-rank" id="goRank"></div>
+      <div class="go-scorerank" id="goScoreRank"></div>
       <div class="row"><span class="k">Score</span><span class="v" id="goScore">0</span></div>
       <div class="row"><span class="k">Best</span><span class="v" id="goBest">0</span></div>
       <div class="row"><span class="k">Max tile</span><span class="v" id="goMaxTile">0</span></div>
       <div class="row"><span class="k">Best chain</span><span class="v" id="goBestChain">0</span></div>
       <div class="row"><span class="k">Chains</span><span class="v" id="goChains">0</span></div>
       <div class="row"><span class="k">Moves</span><span class="v" id="goMoves">0</span></div>
+      <div class="row"><span class="k">Goals</span><span class="v" id="goGoals">0/3</span></div>
       <div class="actions">
         <button class="btn primary" id="tryAgain">TRY AGAIN</button>
         <button class="btn" id="continueEndless" style="display:none">CONTINUE ENDLESS</button>
@@ -60,10 +62,12 @@
   <div class="modal-backdrop" id="menu">
     <div class="modal">
       <h2>MENU</h2>
+      <div class="goals-box" id="menuGoals"></div>
       <div class="menu-list">
         <button class="btn primary" id="menuResume">▶ RESUME</button>
         <button class="btn" id="menuHighscores">🏆 HIGH SCORES</button>
         <button class="btn" id="menuAchievements">★ ACHIEVEMENTS</button>
+        <button class="btn" id="menuStats">📊 STATS</button>
         <button class="btn" id="menuHowto">? HOW TO PLAY</button>
         <button class="btn" id="menuNew">⟲ NEW GAME</button>
       </div>
@@ -89,6 +93,20 @@
       <h2>ACHIEVEMENTS <span class="ach-count" id="achCount"></span></h2>
       <div class="ach-list" id="achList"></div>
       <div class="actions"><button class="btn primary" id="achBack">BACK</button></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="stats">
+    <div class="modal">
+      <h2>STATS</h2>
+      <div class="row"><span class="k">Games played</span><span class="v" id="stGames">0</span></div>
+      <div class="row"><span class="k">Best score</span><span class="v" id="stBest">0</span></div>
+      <div class="row"><span class="k">Average score</span><span class="v" id="stAvg">0</span></div>
+      <div class="row"><span class="k">Max tile ever</span><span class="v" id="stMaxTile">0</span></div>
+      <div class="row"><span class="k">Longest chain</span><span class="v" id="stChain">0</span></div>
+      <div class="row"><span class="k">Total chains</span><span class="v" id="stChains">0</span></div>
+      <div class="row"><span class="k">Total moves</span><span class="v" id="stMoves">0</span></div>
+      <div class="actions"><button class="btn primary" id="stBack">BACK</button></div>
     </div>
   </div>
 
@@ -146,6 +164,7 @@
         inputLocked = false;
         syncUI();
         checkAchievements(); // per-move unlocks (tiles, chains, score)
+        checkGoals();        // per-move run-goal completion
         if (winThisMove) {
           winThisMove = false;
           won2048shown = true;
@@ -167,6 +186,7 @@
       won2048shown = false;
       winThisMove = false;
       runFinalized = false;
+      genGoals();
       game.newGame();
       renderer.setBoard(game.board);
       $("gameover").classList.remove("show");
@@ -204,6 +224,14 @@
       if (maxTile >= 512) return { label: "OVERLOAD", cls: "overload" };
       return { label: "REACTOR STABLE", cls: "stable" };
     }
+    // Separate rank by score, so two runs to the same tile still feel distinct.
+    function scoreRankFor(s) {
+      if (s >= 40000) return "OVERSEER";
+      if (s >= 15000) return "REACTOR CHIEF";
+      if (s >= 5000) return "ENGINEER";
+      if (s >= 1500) return "OPERATOR";
+      return "TRAINEE";
+    }
 
     function fillModalStats() {
       $("goScore").textContent = game.score;
@@ -212,10 +240,12 @@
       $("goBestChain").textContent = "x" + game.stats.bestComboThisGame;
       $("goChains").textContent = game.stats.chainsTriggered;
       $("goMoves").textContent = game.stats.moves;
+      $("goGoals").textContent = goalsDone() + "/" + goals.length;
       var r = rankFor(game.stats.maxTile);
       var el = $("goRank");
       el.textContent = r.label;
       el.className = "go-rank " + r.cls;
+      $("goScoreRank").textContent = scoreRankFor(game.score) + " · " + game.score.toLocaleString();
     }
 
     // --- GameVolt portal hooks (guarded; no-op standalone) ---------------
@@ -241,12 +271,17 @@
         date: Date.now(),
       });
       portalSubmitScore(game.score); // optional — only when inside GameVolt
-      CR.Lifetime.record(game.stats.moves, game.stats.chainsTriggered);
+      CR.Lifetime.record({
+        moves: game.stats.moves,
+        chains: game.stats.chainsTriggered,
+        score: game.score,
+        maxTile: game.stats.maxTile,
+      });
       checkAchievements(); // re-check now that lifetime totals went up
     }
 
-    function checkAchievements() {
-      var newly = CR.Achievements.check({
+    function runCtx() {
+      return {
         maxTile: game.stats.maxTile,
         bestCombo: game.stats.bestComboThisGame,
         score: game.score,
@@ -254,11 +289,40 @@
         chains: game.stats.chainsTriggered,
         games: CR.Lifetime.games(),
         lifetimeMoves: CR.Lifetime.moves(),
-      });
+      };
+    }
+
+    function checkAchievements() {
+      var newly = CR.Achievements.check(runCtx());
       newly.forEach(function (d) {
         portalUnlock(d.id); // sync to portal if present
         queueToast(d);      // our own toast always (works standalone)
       });
+    }
+
+    // --- run goals (3 mini-objectives per run) ---
+    var goals = [];
+    function genGoals() { goals = CR.RunGoals.pick(3); }
+    function goalsDone() { return goals.filter(function (g) { return g.done; }).length; }
+    function checkGoals() {
+      var ctx = runCtx();
+      goals.forEach(function (g) {
+        if (!g.done && g.test(ctx)) {
+          g.done = true;
+          queueToast({ icon: "🎯", tier: "goal", name: g.label, label: "GOAL CLEAR" });
+        }
+      });
+    }
+    function renderMenuGoals() {
+      var html = '<div class="goals-title">RUN GOALS <span>' + goalsDone() + "/" + goals.length + "</span></div>";
+      html += goals.map(function (g) {
+        return '<div class="goal ' + (g.done ? "done" : "") + '">' +
+          '<span class="goal-mark">' + (g.done ? "✓" : "○") + '</span>' +
+          '<span class="goal-label"></span></div>';
+      }).join("");
+      $("menuGoals").innerHTML = html;
+      var labels = $("menuGoals").querySelectorAll(".goal-label");
+      goals.forEach(function (g, i) { labels[i].textContent = g.label; });
     }
 
     var toastQ = [], toastBusy = false;
@@ -269,9 +333,10 @@
       var d = toastQ.shift();
       var el = $("achToast");
       el.innerHTML = '<div class="ach-toast-badge"></div><div>' +
-        '<div class="ach-toast-label">ACHIEVEMENT</div>' +
+        '<div class="ach-toast-label"></div>' +
         '<div class="ach-toast-row"><span class="ach-toast-tier"></span><span class="ach-toast-name"></span></div></div>';
       el.querySelector(".ach-toast-badge").textContent = d.icon || "★";
+      el.querySelector(".ach-toast-label").textContent = d.label || "ACHIEVEMENT";
       var tierEl = el.querySelector(".ach-toast-tier");
       tierEl.textContent = (d.tier || "").toUpperCase();
       tierEl.className = "ach-toast-tier " + (d.tier || "");
@@ -424,7 +489,7 @@
     function showScreen(id) { var el = $(id); el.classList.add("show"); focusFirst(el); }
     function hideScreen(id) { $(id).classList.remove("show"); }
 
-    function openMenu() { audio.unlock(); syncEasyButton(); syncSoundButton(); showScreen("menu"); }
+    function openMenu() { audio.unlock(); syncEasyButton(); syncSoundButton(); renderMenuGoals(); showScreen("menu"); }
     $("openMenu").addEventListener("click", openMenu);
     $("menuResume").addEventListener("click", function () { hideScreen("menu"); $("openMenu").focus(); });
     $("menuNew").addEventListener("click", function () { hideScreen("menu"); startNewGame(); });
@@ -486,9 +551,23 @@
     }
     $("achBack").addEventListener("click", function () { hideScreen("achievements"); showScreen("menu"); });
 
+    // Stats screen (all-time)
+    function openStats() {
+      $("stGames").textContent = CR.Lifetime.games();
+      $("stBest").textContent = game.bestScore;
+      $("stAvg").textContent = CR.Lifetime.avgScore();
+      $("stMaxTile").textContent = CR.Lifetime.maxTile();
+      $("stChain").textContent = game.longestChain;
+      $("stChains").textContent = CR.Lifetime.chains();
+      $("stMoves").textContent = CR.Lifetime.moves();
+      showScreen("stats");
+    }
+    $("menuStats").addEventListener("click", function () { hideScreen("menu"); openStats(); });
+    $("stBack").addEventListener("click", function () { hideScreen("stats"); showScreen("menu"); });
+
     // --- difficulty + sound toggles (live in the menu) ---
     function syncEasyButton() {
-      $("easy").textContent = game.easyMode ? "EASY" : "NORMAL";
+      $("easy").textContent = game.easyMode ? "ASSIST" : "STANDARD";
       $("easy").classList.toggle("active", game.easyMode);
     }
     $("easy").addEventListener("click", function () {
@@ -770,6 +849,7 @@
         endlessMode = game.has2048;
         winThisMove = false;
         runFinalized = false;
+        genGoals();
         renderer.setBoard(game.board);
         $("gameover").classList.remove("show");
         $("continueEndless").style.display = "none";

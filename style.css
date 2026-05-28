@@ -652,3 +652,47 @@ button:focus-visible {
   transition: transform 0.4s cubic-bezier(0.2, 1.3, 0.4, 1);
 }
 .resume-note.show { transform: translate(-50%, 0); }
+
+/* Run goals (shown in the menu) */
+.goals-box {
+  text-align: left;
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(124, 92, 252, 0.25);
+  border-radius: 12px;
+  background: rgba(124, 92, 252, 0.06);
+}
+.goals-title {
+  display: flex;
+  justify-content: space-between;
+  font-family: "Press Start 2P", system-ui, monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--gv-muted);
+  margin-bottom: 8px;
+}
+.goals-title span { color: #a78bfa; }
+.goal {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-family: "VT323", monospace;
+  font-size: 17px;
+  color: var(--gv-muted);
+  padding: 2px 0;
+}
+.goal-mark { color: #626580; width: 16px; text-align: center; }
+.goal.done { color: #8df7bb; }
+.goal.done .goal-mark { color: #06d6a0; }
+
+/* Score-based rank line on the end screen */
+.go-scorerank {
+  font-family: "VT323", monospace;
+  font-size: 19px;
+  letter-spacing: 1px;
+  color: #a78bfa;
+  margin: -8px 0 14px;
+}
+
+/* Goal-completion toast tier */
+.ach-toast-tier.goal { color: #21e6ff; }
