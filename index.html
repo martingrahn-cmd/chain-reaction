@@ -399,6 +399,7 @@
         case "menu": $("menuResume").click(); break;
         case "highscores": $("hsBack").click(); break;
         case "achievements": $("achBack").click(); break;
+        case "stats": $("stBack").click(); break;
         case "tutorial": closeTutorial(); break;
         // gameover has no "dismiss" — you must pick Try Again / Continue
       }
@@ -714,6 +715,7 @@
       tutIndex = 0;
       $("tutorial").classList.add("show"); // show first so the canvas has a width
       renderTut();
+      focusFirst($("tutorial"));
     }
     function closeTutorial() {
       $("tutorial").classList.remove("show");
