@@ -208,7 +208,7 @@
     this.longestChain = loadNumber(LS_CHAIN);
     this.isGameOver = false;
     this.has2048 = false;
-    this.previousState = null; // { board (value snapshot), score, undosRemaining }
+    this.history = []; // recent { cells, score } snapshots for multi-step undo
     this.stats = freshStats();
     try {
       this.easyMode = localStorage.getItem(LS_EASY) === "1";
@@ -242,7 +242,7 @@
     this.isGameOver = false;
     this.has2048 = false;
     this.undosRemaining = this.maxUndos;
-    this.previousState = null;
+    this.history = [];
     this.stats = freshStats();
     spawnRandom(this.board, this.spawn4Chance);
     spawnRandom(this.board, this.spawn4Chance);
@@ -254,7 +254,7 @@
     const cells = this.board.map(function (t) {
       return t ? { value: t.value, row: t.row, col: t.col } : null;
     });
-    return { cells: cells, score: this.score, undosRemaining: this.undosRemaining };
+    return { cells: cells, score: this.score };
   };
 
   // Performs a move. Returns the animation plan, or null if nothing moved.
@@ -265,8 +265,10 @@
     const plan = computeMove(this.board, dir);
     if (!plan.moved) return null;
 
-    // Commit the move.
-    this.previousState = snap;
+    // Commit the move. Keep a short history so undo can step back several
+    // moves in a row (up to maxUndos), not just the most recent one.
+    this.history.push(snap);
+    if (this.history.length > this.maxUndos) this.history.shift();
     this.score += plan.totalScore;
     this.board = plan.finalBoard;
     plan.spawn = spawnRandom(this.board, this.spawn4Chance);
@@ -297,16 +299,20 @@
     return plan;
   };
 
-  // Reverts the last move (one use per game).
+  Game.prototype.canUndo = function () {
+    return this.undosRemaining > 0 && this.history.length > 0;
+  };
+
+  // Steps one move back. Can be called repeatedly to undo several moves in a
+  // row, up to the remaining budget / available history.
   Game.prototype.undo = function () {
-    if (!this.previousState || this.undosRemaining <= 0) return false;
-    const snap = this.previousState;
+    if (!this.canUndo()) return false;
+    const snap = this.history.pop();
     this.board = snap.cells.map(function (c) {
       return c ? makeTile(c.value, c.row, c.col) : null;
     });
     this.score = snap.score;
-    this.undosRemaining = snap.undosRemaining - 1;
-    this.previousState = null;
+    this.undosRemaining -= 1;
     this.isGameOver = false;
     this.save();
     return true;
@@ -343,7 +349,7 @@
       this.score = s.score || 0;
       this.has2048 = !!s.has2048;
       this.undosRemaining = s.undosRemaining != null ? s.undosRemaining : this.maxUndos;
-      this.previousState = null; // undo doesn't carry across sessions
+      this.history = []; // undo history doesn't carry across sessions
       this.isGameOver = false;
       this.stats = s.stats || freshStats();
       return true;
@@ -439,13 +445,29 @@
       (function () {
         const g = new Game();
         g.board = boardFrom([2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        g.score = 0; g.undosRemaining = 1; g.previousState = null; g.isGameOver = false;
+        g.score = 0; g.undosRemaining = 1; g.history = []; g.isGameOver = false;
         const before = values(g.board);
         mockRandom([0, 0]); // deterministic spawn
         const plan = g.move("right");
         const movedOk = !!plan && g.score === 4;
         g.undo();
         check("undo restores board+score", movedOk && JSON.stringify(values(g.board)) === JSON.stringify(before) && g.score === 0);
+      })();
+
+      // 3b) Multi-step undo: three moves back, three undos, full restore.
+      (function () {
+        const g = new Game();
+        g.maxUndos = 3; g.undosRemaining = 3; g.history = []; g.isGameOver = false;
+        g.board = boardFrom([2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        g.score = 0;
+        const before = values(g.board);
+        mockRandom([0, 0, 0, 0, 0, 0]); // deterministic spawns across moves
+        g.move("up"); g.move("left"); g.move("down");
+        const movedThrice = g.history.length === 3;
+        g.undo(); g.undo(); g.undo();
+        check("multi-step undo (3 back)",
+          movedThrice && g.undosRemaining === 0 && g.history.length === 0 &&
+          JSON.stringify(values(g.board)) === JSON.stringify(before) && g.score === 0);
       })();
 
       // 4) Easy-mode spawn chance honours spawn4Chance via mocked random.
@@ -460,7 +482,7 @@
       (function () {
         const g = new Game();
         g.board = boardFrom([2, 4, 2, 4, 4, 8, 4, 8, 2, 4, 2, 4, 8, 8, 4, 8]);
-        g.score = 0; g.isGameOver = false; g.has2048 = false; g.undosRemaining = 1; g.previousState = null;
+        g.score = 0; g.isGameOver = false; g.has2048 = false; g.undosRemaining = 1; g.history = [];
         mockRandom([0, 0.05]); // only one empty after the merge; value 4 -> dead board
         const plan = g.move("right");
         check("game over after spawn", !!plan && g.isGameOver === true);
@@ -470,7 +492,7 @@
       (function () {
         const g = new Game();
         g.board = boardFrom([2, 4, 2, 4, 4, 8, 4, 8, 2, 4, 2, 4, 1024, 1024, 4, 8]);
-        g.score = 0; g.isGameOver = false; g.has2048 = false; g.undosRemaining = 1; g.previousState = null;
+        g.score = 0; g.isGameOver = false; g.has2048 = false; g.undosRemaining = 1; g.history = [];
         mockRandom([0, 0.05]); // spawn 4 into the freed cell -> dead
         const plan = g.move("right");
         check("win + game over edge case", !!plan && g.has2048 === true && g.isGameOver === true);

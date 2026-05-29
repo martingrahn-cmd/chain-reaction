@@ -147,7 +147,7 @@
       $("score").textContent = game.score;
       $("best").textContent = game.bestScore;
       $("undoCount").textContent = game.undosRemaining;
-      $("undo").disabled = !game.previousState || game.undosRemaining <= 0 || inputLocked;
+      $("undo").disabled = !game.canUndo() || inputLocked;
     }
 
     var renderer = new CR.Renderer(canvas, particles, audio, {
@@ -738,7 +738,7 @@
         if (arr[i]) board[i] = CR.makeTile(arr[i], Math.floor(i / 4), i % 4);
       }
       game.board = board;
-      game.previousState = null;
+      game.history = [];
       game.isGameOver = false;
       won2048shown = false;
       winThisMove = false;
